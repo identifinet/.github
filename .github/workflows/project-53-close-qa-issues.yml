@@ -106,11 +106,8 @@ jobs:
                             number
                             title
                             state
-                            assignees(first: 100) {
-                              nodes {
-                                id
-                                login
-                              }
+                            assignees(first: 1) {
+                              totalCount
                             }
                             repository {
                               nameWithOwner
@@ -146,9 +143,6 @@ jobs:
                     id
                     number
                     state
-                    assignees(first: 10) {
-                      totalCount
-                    }
                     repository {
                       nameWithOwner
                     }
@@ -244,6 +238,14 @@ jobs:
 
                 processedIssueIds.add(issue.id);
                 eligibleIssueCount += 1;
+
+                const needsUpdate = issue.state !== 'CLOSED' || issue.assignees.totalCount > 0;
+                if (!needsUpdate) {
+                  core.info(
+                    `Skipping ${issue.repository.nameWithOwner}#${issue.number} because it is already closed and unassigned.`
+                  );
+                  continue;
+                }
 
                 core.info(
                   `Processing ${issue.repository.nameWithOwner}#${issue.number} ` +
