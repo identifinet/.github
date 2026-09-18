@@ -1,0 +1,291 @@
+# Polls identifinet Project v2 #53 every 10 minutes and on manual dispatch.
+#
+# Required secret:
+# - PROJECT_AUTOMATION_TOKEN
+#   The default GITHUB_TOKEN cannot reliably read/write an organization Project v2
+#   or administer issues across every repository in the org. Configure this secret
+#   with project access plus permission to edit issues in all target repositories.
+#   For a classic PAT, `project` and `repo` are typically required. For a
+#   fine-grained token, grant organization Projects read/write and repository
+#   Issues read/write across the applicable identifinet repositories.
+#
+# Behavior:
+# - Resolves the Project v2 field named "Delivery Status" and its "QA" option by
+#   name via GraphQL.
+# - Paginates all project items.
+# - When a project item is an issue whose Delivery Status is exactly "QA", closes
+#   the issue and removes all assignees.
+name: Close Project 53 QA Issues
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+
+concurrency:
+  group: project-53-close-qa-issues
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  ORGANIZATION_LOGIN: identifinet
+  PROJECT_NUMBER: '53'
+  DELIVERY_STATUS_FIELD_NAME: Delivery Status
+  QA_OPTION_NAME: QA
+
+jobs:
+  close-qa-issues:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate required secret
+        if: ${{ secrets.PROJECT_AUTOMATION_TOKEN == '' }}
+        run: |
+          echo '::error::Missing PROJECT_AUTOMATION_TOKEN secret. Configure a token with organization Project access and permission to edit issues across target repositories.'
+          exit 1
+
+      - name: Close matching issues and clear assignees
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+          script: |
+            const organizationLogin = process.env.ORGANIZATION_LOGIN;
+            const projectNumber = Number(process.env.PROJECT_NUMBER);
+            const fieldName = process.env.DELIVERY_STATUS_FIELD_NAME;
+            const targetOptionName = process.env.QA_OPTION_NAME;
+
+            const projectFieldsQuery = `
+              query ProjectFields($organizationLogin: String!, $projectNumber: Int!, $after: String) {
+                organization(login: $organizationLogin) {
+                  projectV2(number: $projectNumber) {
+                    id
+                    title
+                    fields(first: 100, after: $after) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2FieldCommon {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const projectItemsQuery = `
+              query ProjectItems($organizationLogin: String!, $projectNumber: Int!, $fieldName: String!, $after: String) {
+                organization(login: $organizationLogin) {
+                  projectV2(number: $projectNumber) {
+                    items(first: 100, after: $after) {
+                      nodes {
+                        id
+                        fieldValueByName(name: $fieldName) {
+                          __typename
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            name
+                            optionId
+                          }
+                        }
+                        content {
+                          __typename
+                          ... on Issue {
+                            id
+                            number
+                            title
+                            state
+                            assignees(first: 100) {
+                              nodes {
+                                id
+                                login
+                              }
+                            }
+                            repository {
+                              nameWithOwner
+                            }
+                          }
+                          ... on PullRequest {
+                            id
+                            number
+                            repository {
+                              nameWithOwner
+                            }
+                          }
+                          ... on DraftIssue {
+                            id
+                            title
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const updateIssueMutation = `
+              mutation UpdateIssue($issueId: ID!) {
+                updateIssue(input: { id: $issueId, state: CLOSED, assigneeIds: [] }) {
+                  issue {
+                    id
+                    number
+                    state
+                    assignees(first: 10) {
+                      totalCount
+                    }
+                    repository {
+                      nameWithOwner
+                    }
+                  }
+                }
+              }
+            `;
+
+            const fields = [];
+            let fieldsCursor = null;
+            let projectId = null;
+            let projectTitle = null;
+
+            do {
+              const response = await github.graphql(projectFieldsQuery, {
+                organizationLogin,
+                projectNumber,
+                after: fieldsCursor
+              });
+
+              const project = response.organization?.projectV2;
+              if (!project) {
+                throw new Error(`Organization project ${organizationLogin}#${projectNumber} was not found.`);
+              }
+
+              projectId ??= project.id;
+              projectTitle ??= project.title;
+              fields.push(...project.fields.nodes);
+              fieldsCursor = project.fields.pageInfo.hasNextPage ? project.fields.pageInfo.endCursor : null;
+            } while (fieldsCursor);
+
+            const deliveryStatusField = fields.find(
+              (field) => field?.__typename === 'ProjectV2SingleSelectField' && field.name === fieldName
+            );
+
+            if (!deliveryStatusField) {
+              throw new Error(`Single-select field "${fieldName}" was not found on project ${organizationLogin}#${projectNumber}.`);
+            }
+
+            const qaOption = deliveryStatusField.options?.find((option) => option.name === targetOptionName);
+            if (!qaOption) {
+              throw new Error(`Option "${targetOptionName}" was not found in field "${fieldName}" on project ${organizationLogin}#${projectNumber}.`);
+            }
+
+            core.info(`Loaded project ${projectTitle} (${projectId}), field ${deliveryStatusField.id}, option ${qaOption.id}.`);
+
+            let itemsCursor = null;
+            let inspectedItemCount = 0;
+            let eligibleIssueCount = 0;
+            let updatedIssueCount = 0;
+            let skippedNonIssueCount = 0;
+            let skippedNonQaCount = 0;
+            let failedIssueCount = 0;
+            const processedIssueIds = new Set();
+
+            do {
+              const response = await github.graphql(projectItemsQuery, {
+                organizationLogin,
+                projectNumber,
+                fieldName,
+                after: itemsCursor
+              });
+
+              const project = response.organization?.projectV2;
+              if (!project) {
+                throw new Error(`Organization project ${organizationLogin}#${projectNumber} became unavailable during processing.`);
+              }
+
+              for (const item of project.items.nodes) {
+                inspectedItemCount += 1;
+
+                const contentType = item.content?.__typename;
+                if (contentType !== 'Issue') {
+                  skippedNonIssueCount += 1;
+                  continue;
+                }
+
+                const deliveryStatus = item.fieldValueByName;
+                if (
+                  deliveryStatus?.__typename !== 'ProjectV2ItemFieldSingleSelectValue' ||
+                  deliveryStatus.name !== targetOptionName ||
+                  deliveryStatus.optionId !== qaOption.id
+                ) {
+                  skippedNonQaCount += 1;
+                  continue;
+                }
+
+                const issue = item.content;
+                if (processedIssueIds.has(issue.id)) {
+                  core.info(`Skipping duplicate project item for ${issue.repository.nameWithOwner}#${issue.number}.`);
+                  continue;
+                }
+
+                processedIssueIds.add(issue.id);
+                eligibleIssueCount += 1;
+
+                const assigneeLogins = issue.assignees.nodes.map((assignee) => assignee.login);
+                core.info(
+                  `Processing ${issue.repository.nameWithOwner}#${issue.number} ` +
+                  `(state=${issue.state}, assignees=${assigneeLogins.length ? assigneeLogins.join(', ') : 'none'}).`
+                );
+
+                try {
+                  const mutationResult = await github.graphql(updateIssueMutation, {
+                    issueId: issue.id
+                  });
+
+                  const updatedIssue = mutationResult.updateIssue.issue;
+                  updatedIssueCount += 1;
+                  core.info(
+                    `Updated ${updatedIssue.repository.nameWithOwner}#${updatedIssue.number}: ` +
+                    `state=${updatedIssue.state}, assignees=${updatedIssue.assignees.totalCount}.`
+                  );
+                } catch (error) {
+                  failedIssueCount += 1;
+                  core.warning(
+                    `Failed to update ${issue.repository.nameWithOwner}#${issue.number}: ${error.message}`
+                  );
+                }
+              }
+
+              itemsCursor = project.items.pageInfo.hasNextPage ? project.items.pageInfo.endCursor : null;
+            } while (itemsCursor);
+
+            core.summary
+              .addHeading('Project 53 QA automation')
+              .addRaw(`Inspected items: ${inspectedItemCount}`, true)
+              .addRaw(`Matching issues: ${eligibleIssueCount}`, true)
+              .addRaw(`Updated issues: ${updatedIssueCount}`, true)
+              .addRaw(`Skipped non-issues: ${skippedNonIssueCount}`, true)
+              .addRaw(`Skipped non-QA issues: ${skippedNonQaCount}`, true)
+              .addRaw(`Failed updates: ${failedIssueCount}`, true);
+
+            await core.summary.write();
+
+            core.info(
+              `Completed Project ${projectNumber} QA scan: ` +
+              `${updatedIssueCount}/${eligibleIssueCount} matching issues updated, ` +
+              `${failedIssueCount} update failures.`
+            );
