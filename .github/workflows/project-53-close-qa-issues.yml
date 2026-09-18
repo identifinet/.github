@@ -19,8 +19,7 @@ name: Close Project 53 QA Issues
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/10 * * * *'
+
 
 concurrency:
   group: project-53-close-qa-issues
