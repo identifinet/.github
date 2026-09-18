@@ -33,6 +33,8 @@ env:
   PROJECT_NUMBER: '53'
   DELIVERY_STATUS_FIELD_NAME: Delivery Status
   QA_OPTION_NAME: QA
+  # Set to 'false' once the field/value wiring is confirmed to silence per-item logs.
+  DIAGNOSTICS: 'true'
 
 jobs:
   close-qa-issues:
@@ -57,6 +59,7 @@ jobs:
             const projectNumber = Number(process.env.PROJECT_NUMBER);
             const fieldName = process.env.DELIVERY_STATUS_FIELD_NAME;
             const targetOptionName = process.env.QA_OPTION_NAME;
+            const diagnostics = process.env.DIAGNOSTICS === 'true';
 
             const getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
 
@@ -115,8 +118,10 @@ jobs:
                               name
                               optionId
                               field {
-                                ... on ProjectV2SingleSelectField {
+                                __typename
+                                ... on ProjectV2FieldCommon {
                                   id
+                                  name
                                 }
                               }
                             }
@@ -174,8 +179,10 @@ jobs:
                           name
                           optionId
                           field {
-                            ... on ProjectV2SingleSelectField {
+                            __typename
+                            ... on ProjectV2FieldCommon {
                               id
+                              name
                             }
                           }
                         }
@@ -207,7 +214,7 @@ jobs:
 
             const isQaDeliveryStatus = (fieldValue) => (
               fieldValue?.__typename === 'ProjectV2ItemFieldSingleSelectValue' &&
-              fieldValue.field?.id === deliveryStatusFieldId &&
+              (fieldValue.field?.id === deliveryStatusFieldId || fieldValue.field?.name === fieldName) &&
               (
                 (qaOptionId != null && fieldValue.optionId === qaOptionId) ||
                 fieldValue.name === targetOptionName
@@ -294,6 +301,16 @@ jobs:
 
             const deliveryStatusFieldId = deliveryStatusField.id;
             const qaOptionId = qaOption ? qaOption.id : null;
+            if (diagnostics) {
+              core.info(
+                `Diagnostics: resolved field definition ` +
+                JSON.stringify({
+                  id: deliveryStatusField.id,
+                  dataType: deliveryStatusField.dataType,
+                  options: deliveryStatusField.options
+                })
+              );
+            }
             core.info(
               `Scanning project ${organizationLogin}#${projectNumber} for item field ` +
               `"${fieldName}" with target value "${targetOptionName}".`
@@ -341,6 +358,16 @@ jobs:
                 if (contentType !== 'Issue') {
                   skippedNonIssueCount += 1;
                   continue;
+                }
+
+                if (diagnostics) {
+                  const singleSelectValues = item.fieldValues.nodes
+                    .filter((value) => value?.__typename === 'ProjectV2ItemFieldSingleSelectValue')
+                    .map((value) => `${value.field?.name ?? '(unknown field)'}=${value.name ?? '(empty)'}`);
+                  core.info(
+                    `Diagnostics: ${item.content.repository?.nameWithOwner ?? '(no repo)'}#${item.content.number} ` +
+                    `single-select values: ${singleSelectValues.join('; ') || '(none)'}.`
+                  );
                 }
 
                 let hasQaDeliveryStatus = item.fieldValues.nodes.some(isQaDeliveryStatus);
