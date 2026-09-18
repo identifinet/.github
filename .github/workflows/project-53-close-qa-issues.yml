@@ -60,13 +60,13 @@ jobs:
 
             const getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
 
-            const projectMetadataQuery = `
-              query ProjectMetadata($organizationLogin: String!, $projectNumber: Int!) {
+            const projectFieldsQuery = `
+              query ProjectFields($organizationLogin: String!, $projectNumber: Int!, $after: String) {
                 organization(login: $organizationLogin) {
                   projectV2(number: $projectNumber) {
                     id
                     title
-                    fields(first: 100) {
+                    fields(first: 100, after: $after) {
                       nodes {
                         __typename
                         ... on ProjectV2Field {
@@ -88,6 +88,10 @@ jobs:
                             name
                           }
                         }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
                       }
                     }
                   }
@@ -116,6 +120,10 @@ jobs:
                                 }
                               }
                             }
+                          }
+                          pageInfo {
+                            hasNextPage
+                            endCursor
                           }
                         }
                         content {
@@ -155,6 +163,33 @@ jobs:
               }
             `;
 
+            const itemFieldValuesQuery = `
+              query ItemFieldValues($itemId: ID!, $after: String) {
+                node(id: $itemId) {
+                  ... on ProjectV2Item {
+                    fieldValues(first: 100, after: $after) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+                          optionId
+                          field {
+                            ... on ProjectV2SingleSelectField {
+                              id
+                            }
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
             const updateIssueMutation = `
               mutation UpdateIssue($issueId: ID!) {
                 updateIssue(input: { id: $issueId, state: CLOSED, assigneeIds: [] }) {
@@ -170,26 +205,57 @@ jobs:
               }
             `;
 
-            const projectMetadataResponse = await github.graphql(projectMetadataQuery, {
-              organizationLogin,
-              projectNumber
-            });
+            const isQaDeliveryStatus = (fieldValue) => (
+              fieldValue?.__typename === 'ProjectV2ItemFieldSingleSelectValue' &&
+              fieldValue.field?.id === deliveryStatusFieldId &&
+              (fieldValue.optionId === qaOptionId || fieldValue.name === targetOptionName)
+            );
 
-            const initialProject = projectMetadataResponse.organization?.projectV2;
-            if (!initialProject) {
-              throw new Error(`Organization project ${organizationLogin}#${projectNumber} was not found.`);
-            }
+            let projectId = null;
+            let projectTitle = null;
+            let fieldsCursor = null;
+            const availableFieldNames = [];
+            const matchingFields = [];
 
-            const matchingFields = initialProject.fields.nodes.filter((field) => field?.name === fieldName);
+            do {
+              const projectFieldsResponse = await github.graphql(projectFieldsQuery, {
+                organizationLogin,
+                projectNumber,
+                after: fieldsCursor
+              });
+
+              const project = projectFieldsResponse.organization?.projectV2;
+              if (!project) {
+                throw new Error(
+                  fieldsCursor
+                    ? `Organization project ${organizationLogin}#${projectNumber} became unavailable during field lookup.`
+                    : `Organization project ${organizationLogin}#${projectNumber} was not found.`
+                );
+              }
+
+              projectId ??= project.id;
+              projectTitle ??= project.title;
+
+              for (const field of project.fields.nodes) {
+                if (field?.name) {
+                  availableFieldNames.push(field.name);
+                }
+
+                if (field?.name === fieldName) {
+                  matchingFields.push(field);
+                }
+              }
+
+              fieldsCursor = project.fields.pageInfo.hasNextPage ? project.fields.pageInfo.endCursor : null;
+            } while (fieldsCursor);
+
             if (matchingFields.length === 0) {
-              const availableFieldNames = initialProject.fields.nodes
-                .map((field) => field?.name)
-                .filter(Boolean)
+              const sortedFieldNames = [...new Set(availableFieldNames)]
                 .sort((left, right) => left.localeCompare(right));
 
               throw new Error(
                 `Project ${organizationLogin}#${projectNumber} does not contain a field named "${fieldName}". ` +
-                `Available fields: ${availableFieldNames.join(', ') || '(none)'}.`
+                `Available fields: ${sortedFieldNames.join(', ') || '(none)'}.`
               );
             }
 
@@ -222,8 +288,6 @@ jobs:
 
             const deliveryStatusFieldId = deliveryStatusField.id;
             const qaOptionId = qaOption.id;
-            let projectId = initialProject.id;
-            let projectTitle = initialProject.title;
             core.info(
               `Scanning project ${organizationLogin}#${projectNumber} for item field ` +
               `"${fieldName}" with target value "${targetOptionName}".`
@@ -273,11 +337,28 @@ jobs:
                   continue;
                 }
 
-                const hasQaDeliveryStatus = item.fieldValues.nodes.some((fieldValue) => (
-                  fieldValue?.__typename === 'ProjectV2ItemFieldSingleSelectValue' &&
-                  fieldValue.field?.id === deliveryStatusFieldId &&
-                  (fieldValue.optionId === qaOptionId || fieldValue.name === targetOptionName)
-                ));
+                let hasQaDeliveryStatus = item.fieldValues.nodes.some(isQaDeliveryStatus);
+
+                let fieldValuesCursor = item.fieldValues.pageInfo.hasNextPage
+                  ? item.fieldValues.pageInfo.endCursor
+                  : null;
+
+                while (!hasQaDeliveryStatus && fieldValuesCursor) {
+                  const fieldValuesResponse = await github.graphql(itemFieldValuesQuery, {
+                    itemId: item.id,
+                    after: fieldValuesCursor
+                  });
+
+                  const fieldValuesConnection = fieldValuesResponse.node?.fieldValues;
+                  if (!fieldValuesConnection) {
+                    throw new Error(`Project item ${item.id} became unavailable during field value lookup.`);
+                  }
+
+                  hasQaDeliveryStatus = fieldValuesConnection.nodes.some(isQaDeliveryStatus);
+                  fieldValuesCursor = fieldValuesConnection.pageInfo.hasNextPage
+                    ? fieldValuesConnection.pageInfo.endCursor
+                    : null;
+                }
 
                 if (!hasQaDeliveryStatus) {
                   skippedNonQaCount += 1;
