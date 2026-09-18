@@ -245,10 +245,10 @@ jobs:
                 processedIssueIds.add(issue.id);
                 eligibleIssueCount += 1;
 
-                const assigneeLogins = issue.assignees.nodes.map((assignee) => assignee.login);
+                const assigneeCount = issue.assignees.nodes.length;
                 core.info(
                   `Processing ${issue.repository.nameWithOwner}#${issue.number} ` +
-                  `(state=${issue.state}, assignees=${assigneeLogins.length ? assigneeLogins.join(', ') : 'none'}).`
+                  `(state=${issue.state}, assignees=${assigneeCount}).`
                 );
 
                 try {
