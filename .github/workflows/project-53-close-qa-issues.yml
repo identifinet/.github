@@ -245,10 +245,9 @@ jobs:
                 processedIssueIds.add(issue.id);
                 eligibleIssueCount += 1;
 
-                const assigneeCount = issue.assignees.nodes.length;
                 core.info(
                   `Processing ${issue.repository.nameWithOwner}#${issue.number} ` +
-                  `(state=${issue.state}, assignees=${assigneeCount}).`
+                  `(state=${issue.state}).`
                 );
 
                 try {
@@ -260,7 +259,7 @@ jobs:
                   updatedIssueCount += 1;
                   core.info(
                     `Updated ${updatedIssue.repository.nameWithOwner}#${updatedIssue.number}: ` +
-                    `state=${updatedIssue.state}, assignees=${updatedIssue.assignees.totalCount}.`
+                    `state=${updatedIssue.state}.`
                   );
                 } catch (error) {
                   failedIssueCount += 1;
