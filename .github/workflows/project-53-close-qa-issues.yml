@@ -209,8 +209,8 @@ jobs:
               fieldValue?.__typename === 'ProjectV2ItemFieldSingleSelectValue' &&
               fieldValue.field?.id === deliveryStatusFieldId &&
               (
-                fieldValue.optionId === qaOptionId ||
-                (fieldValue.optionId == null && fieldValue.name === targetOptionName)
+                (qaOptionId != null && fieldValue.optionId === qaOptionId) ||
+                fieldValue.name === targetOptionName
               )
             );
 
@@ -283,14 +283,17 @@ jobs:
                 .map((option) => option.name)
                 .sort((left, right) => left.localeCompare(right));
 
-              throw new Error(
-                `Project ${organizationLogin}#${projectNumber} field "${fieldName}" does not contain ` +
-                `option "${targetOptionName}". Available options: ${availableOptionNames.join(', ') || '(none)'}.`
+              // Organization-level fields do not expose their options through the project
+              // field connection, so fall back to matching item values by option name.
+              core.warning(
+                `Project ${organizationLogin}#${projectNumber} field "${fieldName}" did not expose ` +
+                `option "${targetOptionName}" (available options: ${availableOptionNames.join(', ') || '(none)'}). ` +
+                `Matching items by value name "${targetOptionName}" instead.`
               );
             }
 
             const deliveryStatusFieldId = deliveryStatusField.id;
-            const qaOptionId = qaOption.id;
+            const qaOptionId = qaOption ? qaOption.id : null;
             core.info(
               `Scanning project ${organizationLogin}#${projectNumber} for item field ` +
               `"${fieldName}" with target value "${targetOptionName}".`
@@ -298,7 +301,7 @@ jobs:
             core.info(`Loaded project ${projectTitle} (${projectId}).`);
             core.info(
               `Resolved "${fieldName}" to single-select field ${deliveryStatusFieldId} ` +
-              `and "${targetOptionName}" to option ${qaOptionId}.`
+              `and "${targetOptionName}" to option ${qaOptionId ?? '(matched by name)'}.`
             );
 
             let itemsCursor = null;
