@@ -108,24 +108,6 @@ jobs:
                     items(first: 100, after: $after) {
                       nodes {
                         id
-                        fieldValues(first: 20) {
-                          nodes {
-                            __typename
-                            ... on ProjectV2ItemFieldSingleSelectValue {
-                              name
-                              optionId
-                              field {
-                                ... on ProjectV2SingleSelectField {
-                                  id
-                                }
-                              }
-                            }
-                          }
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                        }
                         content {
                           __typename
                           ... on Issue {
@@ -340,13 +322,10 @@ jobs:
                   continue;
                 }
 
-                let hasQaDeliveryStatus = item.fieldValues.nodes.some(isQaDeliveryStatus);
+                let hasQaDeliveryStatus = false;
+                let fieldValuesCursor = null;
 
-                let fieldValuesCursor = item.fieldValues.pageInfo.hasNextPage
-                  ? item.fieldValues.pageInfo.endCursor
-                  : null;
-
-                while (!hasQaDeliveryStatus && fieldValuesCursor) {
+                do {
                   const fieldValuesResponse = await github.graphql(itemFieldValuesQuery, {
                     itemId: item.id,
                     after: fieldValuesCursor
@@ -358,10 +337,10 @@ jobs:
                   }
 
                   hasQaDeliveryStatus = fieldValuesConnection.nodes.some(isQaDeliveryStatus);
-                  fieldValuesCursor = fieldValuesConnection.pageInfo.hasNextPage
+                  fieldValuesCursor = !hasQaDeliveryStatus && fieldValuesConnection.pageInfo.hasNextPage
                     ? fieldValuesConnection.pageInfo.endCursor
                     : null;
-                }
+                } while (!hasQaDeliveryStatus && fieldValuesCursor);
 
                 if (!hasQaDeliveryStatus) {
                   skippedNonQaCount += 1;
