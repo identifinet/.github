@@ -58,6 +58,8 @@ jobs:
             const fieldName = process.env.DELIVERY_STATUS_FIELD_NAME;
             const targetOptionName = process.env.QA_OPTION_NAME;
 
+            const getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
+
             const projectFieldsQuery = `
               query ProjectFields($organizationLogin: String!, $projectNumber: Int!, $after: String) {
                 organization(login: $organizationLogin) {
@@ -272,7 +274,7 @@ jobs:
                 } catch (error) {
                   failedIssueCount += 1;
                   core.warning(
-                    `Failed to update ${issue.repository.nameWithOwner}#${issue.number}: ${error.message}`
+                    `Failed to update ${issue.repository.nameWithOwner}#${issue.number}: ${getErrorMessage(error)}`
                   );
                 }
               }
