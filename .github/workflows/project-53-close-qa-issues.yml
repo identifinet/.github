@@ -109,6 +109,9 @@ jobs:
                             number
                             title
                             state
+                            assignees(first: 0) {
+                              totalCount
+                            }
                             repository {
                               nameWithOwner
                             }
@@ -240,26 +243,7 @@ jobs:
                 processedIssueIds.add(issue.id);
                 eligibleIssueCount += 1;
 
-                let needsUpdate = issue.state !== 'CLOSED';
-                if (!needsUpdate) {
-                  const [owner, repo] = issue.repository.nameWithOwner.split('/');
-
-                  try {
-                    const issueDetails = await github.rest.issues.get({
-                      owner,
-                      repo,
-                      issue_number: issue.number
-                    });
-
-                    needsUpdate = (issueDetails.data.assignees ?? []).length > 0;
-                  } catch (error) {
-                    core.warning(
-                      `Failed to inspect ${issue.repository.nameWithOwner}#${issue.number}; ` +
-                      `attempting update anyway: ${error.message}`
-                    );
-                    needsUpdate = true;
-                  }
-                }
+                const needsUpdate = issue.state !== 'CLOSED' || issue.assignees.totalCount > 0;
 
                 if (!needsUpdate) {
                   skippedClosedUnassignedCount += 1;
