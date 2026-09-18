@@ -40,10 +40,13 @@ jobs:
 
     steps:
       - name: Validate required secret
-        if: ${{ !secrets.PROJECT_AUTOMATION_TOKEN }}
+        env:
+          PROJECT_AUTOMATION_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
         run: |
-          echo '::error::Missing PROJECT_AUTOMATION_TOKEN secret. Configure a token with organization Project access and permission to edit issues across target repositories.'
-          exit 1
+          if [ -z "$PROJECT_AUTOMATION_TOKEN" ]; then
+            echo '::error::Missing PROJECT_AUTOMATION_TOKEN secret. Configure a token with organization Project access and permission to edit issues across target repositories.'
+            exit 1
+          fi
 
       - name: Close matching issues and clear assignees
         uses: actions/github-script@v7
@@ -106,9 +109,6 @@ jobs:
                             number
                             title
                             state
-                            assignees(first: 1) {
-                              totalCount
-                            }
                             repository {
                               nameWithOwner
                             }
@@ -196,6 +196,7 @@ jobs:
             let skippedNonIssueCount = 0;
             let skippedNonQaCount = 0;
             let failedIssueCount = 0;
+            let skippedClosedUnassignedCount = 0;
             const processedIssueIds = new Set();
 
             do {
@@ -239,8 +240,29 @@ jobs:
                 processedIssueIds.add(issue.id);
                 eligibleIssueCount += 1;
 
-                const needsUpdate = issue.state !== 'CLOSED' || issue.assignees.totalCount > 0;
+                let needsUpdate = issue.state !== 'CLOSED';
                 if (!needsUpdate) {
+                  const [owner, repo] = issue.repository.nameWithOwner.split('/');
+
+                  try {
+                    const issueDetails = await github.rest.issues.get({
+                      owner,
+                      repo,
+                      issue_number: issue.number
+                    });
+
+                    needsUpdate = (issueDetails.data.assignees ?? []).length > 0;
+                  } catch (error) {
+                    core.warning(
+                      `Failed to inspect ${issue.repository.nameWithOwner}#${issue.number}; ` +
+                      `attempting update anyway: ${error.message}`
+                    );
+                    needsUpdate = true;
+                  }
+                }
+
+                if (!needsUpdate) {
+                  skippedClosedUnassignedCount += 1;
                   core.info(
                     `Skipping ${issue.repository.nameWithOwner}#${issue.number} because it is already closed and unassigned.`
                   );
@@ -281,6 +303,7 @@ jobs:
               .addRaw(`Updated issues: ${updatedIssueCount}`, true)
               .addRaw(`Skipped non-issues: ${skippedNonIssueCount}`, true)
               .addRaw(`Skipped non-QA issues: ${skippedNonQaCount}`, true)
+              .addRaw(`Skipped closed and unassigned issues: ${skippedClosedUnassignedCount}`, true)
               .addRaw(`Failed updates: ${failedIssueCount}`, true);
 
             await core.summary.write();
