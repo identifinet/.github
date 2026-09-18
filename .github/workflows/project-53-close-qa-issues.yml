@@ -208,7 +208,10 @@ jobs:
             const isQaDeliveryStatus = (fieldValue) => (
               fieldValue?.__typename === 'ProjectV2ItemFieldSingleSelectValue' &&
               fieldValue.field?.id === deliveryStatusFieldId &&
-              (fieldValue.optionId === qaOptionId || fieldValue.name === targetOptionName)
+              (
+                fieldValue.optionId === qaOptionId ||
+                (fieldValue.optionId == null && fieldValue.name === targetOptionName)
+              )
             );
 
             let projectId = null;
