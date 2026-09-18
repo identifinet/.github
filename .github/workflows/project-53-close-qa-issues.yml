@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Validate required secret
-        if: ${{ secrets.PROJECT_AUTOMATION_TOKEN == '' }}
+        if: ${{ !secrets.PROJECT_AUTOMATION_TOKEN }}
         run: |
           echo '::error::Missing PROJECT_AUTOMATION_TOKEN secret. Configure a token with organization Project access and permission to edit issues across target repositories.'
           exit 1
