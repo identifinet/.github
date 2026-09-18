@@ -10,11 +10,11 @@
 #   Issues read/write across the applicable identifinet repositories.
 #
 # Behavior:
-# - Resolves the Project v2 field named "Delivery Status" and its "QA" option by
-#   name via GraphQL.
+# - Reads the Project v2 item field named "Delivery Status" from each project
+#   item via GraphQL.
 # - Paginates all project items.
-# - When a project item is an issue whose Delivery Status is exactly "QA", closes
-#   the issue and removes all assignees.
+# - When a project item is an issue whose Delivery Status value is exactly "QA",
+#   closes the issue and removes all assignees.
 name: Close Project 53 QA Issues
 
 on:
@@ -60,40 +60,12 @@ jobs:
 
             const getErrorMessage = (error) => error instanceof Error ? error.message : String(error);
 
-            const projectFieldsQuery = `
-              query ProjectFields($organizationLogin: String!, $projectNumber: Int!, $after: String) {
-                organization(login: $organizationLogin) {
-                  projectV2(number: $projectNumber) {
-                    id
-                    title
-                    fields(first: 100, after: $after) {
-                      nodes {
-                        __typename
-                        ... on ProjectV2FieldCommon {
-                          id
-                          name
-                        }
-                        ... on ProjectV2SingleSelectField {
-                          options {
-                            id
-                            name
-                          }
-                        }
-                      }
-                      pageInfo {
-                        hasNextPage
-                        endCursor
-                      }
-                    }
-                  }
-                }
-              }
-            `;
-
             const projectItemsQuery = `
               query ProjectItems($organizationLogin: String!, $projectNumber: Int!, $fieldName: String!, $after: String) {
                 organization(login: $organizationLogin) {
                   projectV2(number: $projectNumber) {
+                    id
+                    title
                     items(first: 100, after: $after) {
                       nodes {
                         id
@@ -101,7 +73,6 @@ jobs:
                           __typename
                           ... on ProjectV2ItemFieldSingleSelectValue {
                             name
-                            optionId
                           }
                         }
                         content {
@@ -156,43 +127,13 @@ jobs:
               }
             `;
 
-            const fields = [];
-            let fieldsCursor = null;
             let projectId = null;
             let projectTitle = null;
-
-            do {
-              const response = await github.graphql(projectFieldsQuery, {
-                organizationLogin,
-                projectNumber,
-                after: fieldsCursor
-              });
-
-              const project = response.organization?.projectV2;
-              if (!project) {
-                throw new Error(`Organization project ${organizationLogin}#${projectNumber} was not found.`);
-              }
-
-              projectId ??= project.id;
-              projectTitle ??= project.title;
-              fields.push(...project.fields.nodes);
-              fieldsCursor = project.fields.pageInfo.hasNextPage ? project.fields.pageInfo.endCursor : null;
-            } while (fieldsCursor);
-
-            const deliveryStatusField = fields.find(
-              (field) => field?.__typename === 'ProjectV2SingleSelectField' && field.name === fieldName
+            let hasLoggedProjectMetadata = false;
+            core.info(
+              `Scanning project ${organizationLogin}#${projectNumber} for item field ` +
+              `"${fieldName}" with target value "${targetOptionName}".`
             );
-
-            if (!deliveryStatusField) {
-              throw new Error(`Single-select field "${fieldName}" was not found on project ${organizationLogin}#${projectNumber}.`);
-            }
-
-            const qaOption = deliveryStatusField.options?.find((option) => option.name === targetOptionName);
-            if (!qaOption) {
-              throw new Error(`Option "${targetOptionName}" was not found in field "${fieldName}" on project ${organizationLogin}#${projectNumber}.`);
-            }
-
-            core.info(`Loaded project ${projectTitle} (${projectId}), field ${deliveryStatusField.id}, option ${qaOption.id}.`);
 
             let itemsCursor = null;
             let inspectedItemCount = 0;
@@ -200,6 +141,7 @@ jobs:
             let updatedIssueCount = 0;
             let skippedNonIssueCount = 0;
             let skippedNonQaCount = 0;
+            let skippedUnexpectedFieldValueTypeCount = 0;
             let failedIssueCount = 0;
             let skippedClosedUnassignedCount = 0;
             const processedIssueIds = new Set();
@@ -214,7 +156,18 @@ jobs:
 
               const project = response.organization?.projectV2;
               if (!project) {
-                throw new Error(`Organization project ${organizationLogin}#${projectNumber} became unavailable during processing.`);
+                throw new Error(
+                  itemsCursor
+                    ? `Organization project ${organizationLogin}#${projectNumber} became unavailable during processing.`
+                    : `Organization project ${organizationLogin}#${projectNumber} was not found.`
+                );
+              }
+
+              projectId ??= project.id;
+              projectTitle ??= project.title;
+              if (!hasLoggedProjectMetadata) {
+                core.info(`Loaded project ${projectTitle} (${projectId}).`);
+                hasLoggedProjectMetadata = true;
               }
 
               for (const item of project.items.nodes) {
@@ -227,11 +180,21 @@ jobs:
                 }
 
                 const deliveryStatus = item.fieldValueByName;
-                if (
-                  deliveryStatus?.__typename !== 'ProjectV2ItemFieldSingleSelectValue' ||
-                  deliveryStatus.name !== targetOptionName ||
-                  deliveryStatus.optionId !== qaOption.id
-                ) {
+                if (!deliveryStatus) {
+                  skippedNonQaCount += 1;
+                  continue;
+                }
+
+                if (deliveryStatus.__typename !== 'ProjectV2ItemFieldSingleSelectValue') {
+                  skippedUnexpectedFieldValueTypeCount += 1;
+                  core.warning(
+                    `Skipping ${item.content.repository.nameWithOwner}#${item.content.number} because ` +
+                    `"${fieldName}" returned unexpected type ${deliveryStatus.__typename}.`
+                  );
+                  continue;
+                }
+
+                if (deliveryStatus.name !== targetOptionName) {
                   skippedNonQaCount += 1;
                   continue;
                 }
@@ -289,6 +252,7 @@ jobs:
               .addRaw(`Updated issues: ${updatedIssueCount}`, true)
               .addRaw(`Skipped non-issues: ${skippedNonIssueCount}`, true)
               .addRaw(`Skipped non-QA issues: ${skippedNonQaCount}`, true)
+              .addRaw(`Skipped unexpected field value types: ${skippedUnexpectedFieldValueTypeCount}`, true)
               .addRaw(`Skipped closed and unassigned issues: ${skippedClosedUnassignedCount}`, true)
               .addRaw(`Failed updates: ${failedIssueCount}`, true);
 
