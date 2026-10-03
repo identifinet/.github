@@ -1,0 +1,91 @@
+name: Bug specification
+description: Report a defect with enough detail for a developer or the AI bug-fix agent to fix it without guessing.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill this in completely. When the specification is complete, a triager (or Claude, after you confirm the final spec) applies the **`agent-ready`** label
+        and the coding agent will investigate and open a pull request. A different developer reviews and approves it.
+        The agent only fixes what is described here - be explicit about scope. **Do not paste secrets or customer data.**
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug summary
+      description: One or two sentences describing the defect.
+      placeholder: "Exporting an empty report throws a NullReferenceException instead of producing an empty file."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happens today? Be concrete (outputs, status codes, UI state).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead? If unsure, say so - the agent will stop and ask rather than guess.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, including input data. Note if the bug is intermittent.
+      placeholder: |
+        1. Create a report with no rows
+        2. Call POST /reports/{id}/export?format=csv
+        3. Observe the response
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A list of observable, testable outcomes. Each item must be verifiable by a test or a clear manual check.
+      placeholder: |
+        - [ ] Exporting a report with zero rows returns HTTP 200 and a CSV containing only the header row
+        - [ ] Exporting a report with rows behaves exactly as before
+    validations:
+      required: true
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing requirements
+      description: Which tests must be added or updated, and which suites must pass? (e.g. unit regression test, integration test, manual check)
+      placeholder: "Add a unit test for ReportExporter with an empty dataset. Existing ReportExporter and API integration tests must pass."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment and application version
+      placeholder: "v2.14.1, Production, .NET 8, Windows Server 2022"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages, logs, and diagnostic evidence
+      description: Stack traces, log excerpts, screenshots links. Redact secrets and personal data.
+      render: text
+  - type: input
+    id: components
+    attributes:
+      label: Affected components
+      placeholder: "ReportExporter, /reports API"
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and technical constraints
+      description: Anything the agent must NOT change, compatibility requirements, performance limits, files to avoid.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Known workarounds
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
