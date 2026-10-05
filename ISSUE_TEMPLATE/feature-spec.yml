@@ -55,6 +55,12 @@ body:
       description: Which tests must be added or updated, and which suites must pass?
     validations:
       required: true
+  - type: input
+    id: base_branch
+    attributes:
+      label: Base branch
+      description: Leave blank to use the repository's normal working branch. For a hotfix, enter the existing branch to fix against (for example hotfix/2.4.1). It must exist and be permitted by the repository's policy, otherwise the agent will not start.
+      placeholder: "hotfix/2.4.1"
   - type: textarea
     id: design
     attributes:
