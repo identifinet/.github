@@ -2,6 +2,7 @@ name: Bug specification
 description: Report a defect with enough detail for a developer or the AI bug-fix agent to fix it without guessing.
 title: "[Bug]: "
 labels: ["bug"]
+type: Bug
 body:
   - type: markdown
     attributes:
