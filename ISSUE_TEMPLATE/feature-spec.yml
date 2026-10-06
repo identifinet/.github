@@ -2,6 +2,7 @@ name: Feature specification
 description: Request a feature with enough detail for a developer or the AI agent to implement it without guessing.
 title: "[Feature]: "
 labels: ["enhancement"]
+type: Feature
 body:
   - type: markdown
     attributes:
