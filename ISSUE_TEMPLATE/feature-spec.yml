@@ -1,0 +1,81 @@
+name: Feature specification
+description: Request a feature with enough detail for a developer or the AI agent to implement it without guessing.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill this in completely. When the specification is complete, a triager (or Claude, after the requester confirms)
+        applies the **`agent-ready`** label and the coding agent will implement it and open a pull request.
+        The agent only builds what is described here - be explicit about scope and non-goals.
+        Keep it small enough for one reviewable PR. **Do not paste secrets or customer data.**
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature summary
+      description: One or two sentences describing the capability.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and motivation
+      description: Who needs this and why? What is painful or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Desired behavior
+      description: Concrete behavior - inputs, outputs, edge cases, error handling. If unsure, say so - the agent will stop and ask rather than guess.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A list of observable, testable outcomes.
+      placeholder: |
+        - [ ] ...
+        - [ ] Existing behavior is unchanged
+    validations:
+      required: true
+  - type: textarea
+    id: nongoals
+    attributes:
+      label: Out of scope and non-goals
+      description: What must NOT be built or changed as part of this.
+    validations:
+      required: true
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing requirements
+      description: Which tests must be added or updated, and which suites must pass?
+    validations:
+      required: true
+  - type: input
+    id: base_branch
+    attributes:
+      label: Base branch
+      description: Leave blank to use the repository's normal working branch. For a hotfix, enter the existing branch to fix against (for example hotfix/2.4.1). It must exist and be permitted by the repository's policy, otherwise the agent will not start.
+      placeholder: "hotfix/2.4.1"
+  - type: textarea
+    id: design
+    attributes:
+      label: Design and API notes
+      description: Suggested placement, function signatures, data shapes, patterns to follow.
+  - type: input
+    id: components
+    attributes:
+      label: Affected components
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Compatibility and technical constraints
+      description: Backward compatibility, performance limits, dependencies, files to avoid.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
