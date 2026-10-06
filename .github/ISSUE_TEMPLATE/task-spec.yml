@@ -1,0 +1,89 @@
+name: Task specification
+description: Request work that is neither a bug nor a feature (tech debt, documentation, CI/workflow changes, dependency updates) with enough detail for a developer or the AI agent to do it without guessing.
+title: "[Task]: "
+labels: ["task"]
+type: Task
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe what you know. (If you file through Claude, any section you can't answer is marked `[NEEDS INPUT]`.)
+        A developer completes those sections and applies the **`agent-ready`** label; the coding agent then does the work and opens a pull request
+        that a different developer reviews and approves. The agent only does what is described here - be explicit about scope and non-goals,
+        and keep it small enough for one reviewable PR. Leave **Base branch** blank unless you know it. **Do not paste secrets or customer data.**
+  - type: textarea
+    id: summary
+    attributes:
+      label: Task summary
+      description: One or two sentences describing the work.
+      placeholder: "Replace the hand-rolled date parsing in the reports module with the shared DateUtil helper."
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: Background and motivation
+      description: Why is this worth doing now? What hurts today (risk, cost, confusion, build time)?
+    validations:
+      required: true
+  - type: textarea
+    id: todo
+    attributes:
+      label: What needs to be done
+      description: The concrete work, as specifically as you can. Name the files, docs, workflows or packages involved if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A list of observable, checkable outcomes that mean the task is done.
+      placeholder: |
+        - [ ] No remaining callers of the old helper
+        - [ ] Existing behavior and test results are unchanged
+    validations:
+      required: true
+  - type: textarea
+    id: nongoals
+    attributes:
+      label: Out of scope and non-goals
+      description: What must NOT be changed as part of this task.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: How will we know it worked? Which tests, builds, checks or manual review must pass? (Documentation tasks may be a read-through or link check.)
+    validations:
+      required: true
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: Task type
+      description: Optional. Helps the reviewer know what to look for.
+      options:
+        - Tech debt / refactoring
+        - Documentation
+        - CI / workflow change
+        - Dependency update
+        - Other
+  - type: input
+    id: base_branch
+    attributes:
+      label: Base branch
+      description: Leave blank to use the repository's normal working branch. For a hotfix, enter the existing branch to work against (for example hotfix/2.4.1). It must already exist, otherwise the agent will not start.
+      placeholder: "hotfix/2.4.1"
+  - type: input
+    id: components
+    attributes:
+      label: Affected components
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and risks
+      description: Compatibility, performance or security limits, ordering with other work, files to avoid.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
