@@ -2,6 +2,7 @@ name: Task specification
 description: Request work that is neither a bug nor a feature (tech debt, documentation, CI/workflow changes, dependency updates) with enough detail for a developer or the AI agent to do it without guessing.
 title: "[Task]: "
 labels: ["task"]
+type: Task
 body:
   - type: markdown
     attributes:
