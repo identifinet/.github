@@ -10,7 +10,7 @@ body:
         Describe what you know. (If you file through Claude, any section you can't answer is marked `[NEEDS INPUT]`.)
         A developer completes those sections and applies the **`agent-ready`** label; the coding agent then investigates and opens a pull request
         that a different developer reviews and approves. The agent only fixes what is described here - be explicit about scope.
-        Leave **Base branch** blank unless you know it. **Do not paste secrets or customer data.**
+        Base branch: the skill confirms it with you (default from the repo's `ai-base-branch` property); leave blank only if unsure. **Do not paste secrets or customer data.**
   - type: textarea
     id: summary
     attributes:
@@ -66,7 +66,7 @@ body:
     id: base_branch
     attributes:
       label: Base branch
-      description: Leave blank to use the repository's normal working branch. For a hotfix, enter the existing branch to fix against (for example hotfix/2.4.1). It must already exist, otherwise the agent will not start.
+      description: Leave blank to use the repository's `ai-base-branch` property (else its default branch). For a hotfix, enter the existing branch to fix against (for example hotfix/2.4.1). It must already exist, otherwise the agent will not start.
       placeholder: "hotfix/2.4.1"
   - type: input
     id: environment
