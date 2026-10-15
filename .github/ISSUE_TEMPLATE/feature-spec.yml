@@ -9,7 +9,7 @@ body:
         Describe what you know. (If you file through Claude, any section you can't answer is marked `[NEEDS INPUT]`.)
         After triage, a developer writes and gets the spec approved (`abs.spec`, story ID `ISSUE-<this issue's number>`), completes any open sections and applies the **`agent-ready`** label; the coding agent then implements it and opens a pull request
         that a different developer reviews and approves. The agent only builds what is described here - be explicit about scope and non-goals,
-        and keep it small enough for one reviewable PR. Base branch: the skill confirms it with you (default from the repo's `ai-base-branch` property); leave blank only if unsure. **Do not paste secrets or customer data.**
+        and keep it small enough for one reviewable PR. Base branch: leave it blank unless you know the exact branch (the repo's `ai-base-branch` property, else its default branch, applies). **Do not paste secrets or customer data.**
   - type: textarea
     id: summary
     attributes:
